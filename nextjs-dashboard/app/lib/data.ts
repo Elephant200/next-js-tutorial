@@ -1,4 +1,3 @@
-import { sql } from '@vercel/postgres';
 import { createClient } from '@supabase/supabase-js';
 import {
   CustomerField,
@@ -39,10 +38,10 @@ export async function fetchRevenue() {
 export async function fetchLatestInvoices() {
   try {
     const { data, error } = await supabase
-    .from('invoices')
-    .select('amount, customers(name, image_url, email), id')
-    .order('date', { ascending: false })
-    .limit(5);
+      .from('invoices')
+      .select('amount, customers(name, image_url, email), id')
+      .order('date', { ascending: false })
+      .limit(5);
 
     if (error) throw error
 
