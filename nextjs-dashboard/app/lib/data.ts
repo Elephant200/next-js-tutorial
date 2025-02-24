@@ -16,18 +16,14 @@ const supabase = createClient(
 
 export async function fetchRevenue() {
   try {
-    // Artificially delay a response for demo purposes.
-    // Don't do this in production :)
-
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log('Fetching revenue data...');
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     const { data, error } = await supabase.from('revenue').select('*');
 
     if (error) throw error;
 
-    // console.log('Data fetch completed after 3 seconds.');
-
+    console.log('Data fetch completed after 3 seconds.');
     return data;
   } catch (error) {
     console.error('Database Error:', error);
@@ -37,15 +33,12 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('amount, customers(name, image_url, email), id')
-      .order('date', { ascending: false })
-      .limit(5);
+    const { data, error } = await supabase.rpc('get_latest_invoices');
 
+    
     if (error) throw error
 
-    const latestInvoices = data.map((invoice) => ({
+    const latestInvoices = data.map((invoice: LatestInvoiceRaw) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
     }));
@@ -58,24 +51,36 @@ export async function fetchLatestInvoices() {
 
 export async function fetchCardData() {
   try {
-    const invoiceCount = await supabase.from('invoices').select('*', { count: 'exact', head: true });
-    const customerCount = await supabase.from('customers').select('*', { count: 'exact', head: true });
-    const invoiceStatus = await supabase
-      .from('invoices')
-      .select(
-        `SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as paid,
-        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pending`
-      );
+    const invoiceCountPromise = supabase.from('invoices').select('*', { count: 'exact', head: true })
+    const customerCountPromise = supabase.from('customers').select('*', { count: 'exact', head: true });
+    const invoiceStatusPromise = supabase.rpc('get_invoice_status')
+    
+    const [invoiceCount, customerCount, invoiceStatus] = await Promise.allSettled([
+      invoiceCountPromise,
+      customerCountPromise,
+      invoiceStatusPromise,
+    ]);
 
-    if (invoiceCount.error || customerCount.error || invoiceStatus.error) {
-      throw new Error('Failed to fetch card data.');
+    const errors: String[] = []
+    if (invoiceCount.status !== 'fulfilled') {
+      errors.push(`Invoice Count Error: ${invoiceCount.reason.message || invoiceCount.reason}`);
+    }
+    if (customerCount.status !== 'fulfilled') {
+      errors.push(`Customer Count Error: ${customerCount.reason.message || customerCount.reason}`);
+    }
+    if (invoiceStatus.status !== 'fulfilled') {
+      errors.push(`Invoice Status Error: ${invoiceStatus.reason.message || invoiceStatus.reason}`);
+    }
+
+    if (invoiceCount.status !== "fulfilled" || customerCount.status !== "fulfilled" || invoiceStatus.status !== "fulfilled") {
+      throw new Error(errors.join(' | '));
     }
 
     return {
-      numberOfInvoices: invoiceCount.count || 0,
-      numberOfCustomers: customerCount.count || 0,
-      //totalPaidInvoices: formatCurrency(invoiceStatus.data?.[0].paid || 0),
-      //totalPendingInvoices: formatCurrency(invoiceStatus.data?.[0].pending || 0),
+      numberOfInvoices: invoiceCount.value.count || 0,
+      numberOfCustomers: customerCount.value.count || 0,
+      totalPaidInvoices: formatCurrency(invoiceStatus.value.data?.[0].paid || 0),
+      totalPendingInvoices: formatCurrency(invoiceStatus.value.data?.[0].pending || 0),
     };
   } catch (error) {
     console.error('Database Error:', error);
