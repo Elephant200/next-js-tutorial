@@ -20,7 +20,7 @@ export async function fetchRevenue() {
 
     if (error) throw error;
     return data;
-    
+
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch revenue data.');
@@ -31,7 +31,6 @@ export async function fetchLatestInvoices() {
   try {
     const { data, error } = await supabase.rpc('get_latest_invoices');
 
-    
     if (error) throw error
 
     const latestInvoices = data.map((invoice: LatestInvoiceRaw) => ({
@@ -89,20 +88,16 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
   try {
     const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
-    const { data, error } = await supabase
-      .from('invoices')
-      .select(`
-        id,
-        amount,
-        date,
-        status,
-        customers(name, email, image_url)
-      `)
-      .or(
-        `customers.name.ilike.%${query}%,customers.email.ilike.%${query}%,amount::text.ilike.%${query}%,date::text.ilike.%${query}%,status.ilike.%${query}%`
-      )
-      .order('date', { ascending: false })
-      .range(offset, offset + ITEMS_PER_PAGE - 1);
+    console.log("Searching " + query);
+
+    const { data, error } = await supabase.
+      rpc("search_invoices", {
+        query,
+        limit_val: ITEMS_PER_PAGE,
+        offset_val: offset
+      });
+    
+    console.log("Found " + data);
 
     if (error) throw error;
 
@@ -115,16 +110,11 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
 
 export async function fetchInvoicesPages(query: string) {
   try {
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*', { count: 'exact', head: true })
-      .or(
-        `customers.name.ilike.%${query}%,customers.email.ilike.%${query}%,amount::text.ilike.%${query}%,date::text.ilike.%${query}%,status.ilike.%${query}%`
-      );
+    const { data, error } = await supabase.rpc("search_invoice_count", { query });
     
-    if (error) throw error;
+    if (error) throw data;
 
-    const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(Number(data) / ITEMS_PER_PAGE);
     return totalPages;
   } catch (error) {
     console.error('Database Error:', error);
